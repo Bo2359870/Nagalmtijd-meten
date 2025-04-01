@@ -63,7 +63,7 @@ from scipy.io import wavfile
 tijdsinterval = 1  # in seconden
 
 # Inlezen van het .wav bestand
-file_path = 'metingF.5.3'  # Zorg ervoor dat het juiste bestand wordt gebruikt
+file_path = 'test'  # Zorg ervoor dat het juiste bestand wordt gebruikt
 sampling_rate, audio_data = wavfile.read(file_path)
 
 # Tijd-array maken
