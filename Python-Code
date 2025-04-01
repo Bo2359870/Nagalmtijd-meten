@@ -1,0 +1,181 @@
+# Cel 1
+#Deze code is oorspronkelijk geschreven door Thijs Snel en aangepast door Femke Verheijen en Bert Buisman
+
+#imports
+import pyaudio
+import wave 
+import os
+import numpy as np
+
+# Audioconfiguratie
+Chunk = 1024  # Aantal frames per buffer (verkleint geheugenbelasting)
+Format = pyaudio.paInt16  # 16-bit audioformaat (standaard voor veel toepassingen)
+Rate = 44100  # Samplefrequentie in Hz (CD-kwaliteit)
+seconds = 3  # Totale opnameduur in seconden
+output_file = "test.wav"  # Naam van het uitvoerbestand
+Channels = 1  # Mono-opname (voor eenvoudiger verwerking)
+
+# Controleer of het bestand al bestaat en waarschuw de gebruiker
+if os.path.exists(output_file):
+    print(f"⚠️ Waarschuwing: {output_file} bestaat al en zal worden overschreven.")
+    
+# Initialiseer PyAudio en start opname
+p = pyaudio.PyAudio()
+stream = p.open(format=Format, channels=Channels, rate=Rate, input=True, frames_per_buffer=Chunk)
+
+print("🎤 Start opname...")
+frames = []  # Opslag voor audioblokken
+clipping_detected = False  # Vlag voor detectie van oversturing
+
+# Lees de audioblokken en sla ze op
+for _ in range(int(Rate / Chunk * seconds)):
+    data = stream.read(Chunk)
+    frames.append(data)
+
+    # Controleer op clipping (oversturing)
+    audio_array = np.frombuffer(data, dtype=np.int16)
+    if np.any(audio_array >= 32767) or np.any(audio_array <= -32768):
+        clipping_detected = True
+    
+print("🛑 Opname gestopt.")
+stream.stop_stream()
+stream.close()
+p.terminate()
+
+# Opslaan als WAV-bestand
+with wave.open(output_file, 'wb') as wf:
+    wf.setnchannels(Channels)
+    wf.setsampwidth(p.get_sample_size(Format))
+    wf.setframerate(Rate)
+    wf.writeframes(b''.join(frames))
+
+# Geef feedback over mogelijke vervorming
+if clipping_detected:
+    print("⚠️ Waarschuwing: Clipping gedetecteerd! Het opgenomen geluid is mogelijk vervormd.")
+else:
+    print("✅ Geen clipping gedetecteerd.")
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.io import wavfile
+
+# Stel hier de lengte van het tijdsinterval in
+tijdsinterval = 1  # in seconden
+
+# Inlezen van het .wav bestand
+file_path = 'metingF.5.3'  # Zorg ervoor dat het juiste bestand wordt gebruikt
+sampling_rate, audio_data = wavfile.read(file_path)
+
+# Tijd-array maken
+duration = len(audio_data) / sampling_rate
+time = np.linspace(0., duration, len(audio_data))
+
+# Bepaal de grootte van het tijdsinterval voor het voortschrijdend gemiddelde
+window_size = int(0.3*tijdsinterval * sampling_rate)  # Aantal samples in het tijdsinterval
+
+# Bereken het voortschrijdend gemiddelde van de absolute waarde van de amplitude
+rolling_avg = np.convolve(np.abs(audio_data), np.ones(window_size)/window_size, mode='same')
+
+# Voorkom log(0) problemen door een kleine offset toe te voegen
+dBtest = 20 * np.log10(rolling_avg + 1e-6)
+dB_gekalibreed = dBtest/0.91+6.03   # Kalibratie
+
+# Plot de dB tijd grafiek
+plt.figure(figsize=(10, 6))
+plt.plot(time, dB_gekalibreed, color='navy')
+plt.title('dB tijd grafiek')
+plt.xlabel('t (s)')
+plt.ylabel('dB')
+plt.grid(True)
+plt.show()
+
+# Zoek de top van de dB-grafiek
+top_index = np.argmax(dB_gekalibreed)  # Index van het hoogste punt
+top_value = dB_gekalibreed[top_index]
+print(top_index)
+# Zoek het dalingspunt
+
+# Stel een drempel in: bijvoorbeeld een afname van 10 dB onder de top
+drempel = top_value - 3
+dalingspunt_index = np.argmax(dB_gekalibreed[top_index:] < drempel) + top_index  # Zoek wanneer het dB-punt onder de drempel komt
+dalingspunt_tijd = time[dalingspunt_index]
+print(dalingspunt_tijd)
+
+
+start_met_meten= dalingspunt_tijd
+
+# Bepaal het maximale en minimale dB-niveau NA 2 seconden
+start_index = int(start_met_meten * sampling_rate)  # Converteer 2 seconden naar sample-index
+dB_max = np.max(dB_gekalibreed[start_index:])
+print(f"Max dB (na {start_met_meten} sec): {dB_max}")
+
+dB_min = np.min(dB_gekalibreed)
+print(f"Min dB: {dB_min}")
+
+# Bepaal de drempelwaarde voor nagalm (30 dB onder max)
+DL = dB_max - 30
+print(f"Drempelwaarde (DL): {DL} dB")
+
+# Vind de index van het maximale dB-niveau NA 2 seconden
+index_max = np.argmax(dB_gekalibreed[start_index:]) + start_index  # Compenseer voor offset
+print(f"Index max dB (na {start_met_meten} sec): {index_max}")
+
+
+# Vind de eerste index waar dB onder DL daalt na het maximum
+index2 = np.where(dB_gekalibreed < DL)[0]
+
+# Zoek alleen binnen 1 seconde na index_max (dit is toegevoegd om foutieve rt30 waardes eruit te halen en te wisselen voor rt20 waardes)
+search_end_index = index_max + int(0.4 * sampling_rate)
+index2 = np.where((dB_gekalibreed < DL) & (np.arange(len(dB_gekalibreed)) > index_max) & (np.arange(len(dB_gekalibreed)) <= search_end_index))[0]
+
+index_after_max = index2[index2 > index_max][0] if len(index2[index2 > index_max]) > 0 else None
+
+index2 = np.where((dB_gekalibreed < DL) & (np.arange(len(dB_gekalibreed)) > index_max) & (np.arange(len(dB_gekalibreed)) <= search_end_index))[0]
+if index_after_max is not None:
+    Dsamples = index_after_max - index_max
+    verstreken_tijd = Dsamples / sampling_rate
+    verstreken_tijd_60dB = 2*Dsamples / sampling_rate
+    print(f"Nagalm tijd (RT30): {verstreken_tijd:.3f} sec")
+    print(f"Nagalm tijd (RT60): {verstreken_tijd_60dB:.3f} sec")
+else:
+    DL = dB_max - 20
+    print(f"Drempelwaarde (DL): {DL} dB")
+    index_max = np.argmax(dB_gekalibreed[start_index:]) + start_index  # Compenseer voor offset
+    print(f"Index max dB (na 2 sec): {index_max}")
+    index2 = np.where(dB_gekalibreed < DL)[0]
+    # Zoek alleen binnen 1 seconde na index_max (dit is toegevoegd om foutieve rt30 waardes eruit te halen en te wisselen voor rt20 waardes)
+    search_end_index = index_max + int(0.3 * sampling_rate)
+    index2 = np.where((dB_gekalibreed < DL) & (np.arange(len(dB_gekalibreed)) > index_max) & (np.arange(len(dB_gekalibreed)) <= search_end_index))[0]
+
+    index_after_max = index2[index2 > index_max][0] if len(index2[index2 > index_max]) > 0 else None
+    if index_after_max is not None:
+        Dsamples = index_after_max - index_max
+        verstreken_tijd = Dsamples / sampling_rate
+        verstreken_tijd_60dB = 3*Dsamples / sampling_rate
+        print(f"Nagalm tijd (RT20): {verstreken_tijd:.3f} sec")
+        print(f"Nagalm tijd (RT60): {verstreken_tijd_60dB:.3f} sec")
+    else:
+        DL = dB_max - 10
+        print(f"Drempelwaarde (DL): {DL} dB")
+        index_max = np.argmax(dB_gekalibreed[start_index:]) + start_index  # Compenseer voor offset
+        print(f"Index max dB (na 2 sec): {index_max}")
+        index2 = np.where(dB_gekalibreed < DL)[0]
+         # Zoek alleen binnen 1 seconde na index_max (dit is toegevoegd om foutieve rt30 waardes eruit te halen en te wisselen voor rt20 waardes)
+        search_end_index = index_max + int(0.2 * sampling_rate)
+        index2 = np.where((dB_gekalibreed < DL) & (np.arange(len(dB_gekalibreed)) > index_max) & (np.arange(len(dB_gekalibreed)) <= search_end_index))[0]
+        
+        index_after_max = index2[index2 > index_max][0] if len(index2[index2 > index_max]) > 0 else None
+        if index_after_max is not None:
+            Dsamples = index_after_max - index_max
+            verstreken_tijd = Dsamples / sampling_rate
+            verstreken_tijd_60dB = 6*Dsamples / sampling_rate
+            print(f"Nagalm tijd (RT10): {verstreken_tijd:.3f} sec")
+            print(f"Nagalm tijd (RT60): {verstreken_tijd_60dB:.3f} sec")
+        else:
+            print('geen goede nagalmtijd gevonden')
+
+RT60 = np.array([])
+RT60= np.append(verstreken_tijd_60dB,RT60)
+print(RT60)
+np.save('RT60_F5',RT60)
+print('opgeslagen!')
