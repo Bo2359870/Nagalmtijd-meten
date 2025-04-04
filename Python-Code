@@ -179,3 +179,22 @@ RT60= np.append(verstreken_tijd_60dB,RT60)
 print(RT60)
 np.save('RT60_F5',RT60)
 print('opgeslagen!')
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+#Maken pandas dataframe
+df = pd.read_csv('Voorbeelddata(in).csv')
+print(df.to_string)
+
+#data voor de heatmap definieeren
+data = df
+plt.imshow(data, cmap='autumn_r') 
+
+# Add colorbar 
+
+plt.colorbar() 
+
+plt.title( "2-D Heat Map" ) 
+plt.show() 
